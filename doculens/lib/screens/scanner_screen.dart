@@ -213,15 +213,33 @@ Future<void> _scanDocument() async {
                                         ],
                                       ),
                                     )
-                                  : ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: Image.file(
-                                        File(_capturedImage!.path),
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                      ),
-                                    ),
+: Stack(
+    fit: StackFit.expand,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.file(
+          File(_capturedImage!.path),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+        ),
+      ),
+      Positioned(
+        bottom: 12,
+        right: 12,
+        child: ElevatedButton.icon(
+          onPressed: _scanDocument,
+          icon: const Icon(Icons.camera_alt),
+          label: const Text('Retake'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.black54,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
+    ],
+  ),
                             ),
                           ),
                         ),
