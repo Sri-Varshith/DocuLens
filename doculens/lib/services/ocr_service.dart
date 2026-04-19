@@ -1,9 +1,7 @@
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-
 import 'package:doculens/models/document_data.dart';
 
 class OcrService {
-  /// Runs on-device text recognition and maps lines to [DocumentData] fields.
   Future<DocumentData> extractData(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
@@ -13,9 +11,15 @@ class OcrService {
       final fullText = recognizedText.text;
       print('Full OCR text: $fullText');
 
-      final name = _extractName(fullText);
-      final dob = _extractDob(fullText);
-      final gender = _extractGender(fullText);
+      final lines = fullText.split(RegExp(r'\r?\n'));
+
+      final name = _extractName(lines);
+      final dob = _extractDob(lines);
+      final gender = _extractGender(lines);
+
+      print('Name: $name');
+      print('DOB: $dob');
+      print('Gender: $gender');
 
       return DocumentData(
         name: name,
@@ -30,95 +34,91 @@ class OcrService {
     }
   }
 
-  /// Non-empty [sameLineRemainder] wins; otherwise uses the next raw line
-  /// (trimmed) when it is non-empty.
-  static String _valueOnSameLineOrNext(
-    List<String> rawLines,
-    int lineIndex,
-    String sameLineRemainder,
-  ) {
-    final trimmed = sameLineRemainder.trim();
-    if (trimmed.isNotEmpty) {
-      return trimmed;
-    }
-    if (lineIndex + 1 < rawLines.length) {
-      final next = rawLines[lineIndex + 1].trim();
-      if (next.isNotEmpty) {
-        return next;
-      }
-    }
-    return '';
-  }
-
-  static String _extractName(String text) {
-    final rawLines = text.split(RegExp(r'\r?\n'));
-    for (var i = 0; i < rawLines.length; i++) {
-      final line = rawLines[i].trim();
+  static String _extractName(List<String> lines) {
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
       final lower = line.toLowerCase();
-      const label = 'name:';
-      final idx = lower.indexOf(label);
-      if (idx < 0) {
-        continue;
-      }
-      final afterLabel = line.substring(idx + label.length);
-      final value = _valueOnSameLineOrNext(rawLines, i, afterLabel);
-      if (value.isNotEmpty) {
-        return value;
-      }
-    }
-    return '';
-  }
 
-  static const List<String> _dobLabels = [
-    'date of birth:',
-    'd.o.b:',
-    'dob:',
-  ];
-
-  static String _extractDob(String text) {
-    final rawLines = text.split(RegExp(r'\r?\n'));
-    for (var i = 0; i < rawLines.length; i++) {
-      final line = rawLines[i].trim();
-      final lower = line.toLowerCase();
-      for (final label in _dobLabels) {
-        final idx = lower.indexOf(label);
-        if (idx < 0) {
-          continue;
+      // Format: "Name: John" or "NAME: John"
+      if (lower.contains('name:')) {
+        final idx = lower.indexOf('name:');
+        final after = line.substring(idx + 5).trim();
+        // Remove leading colon if present
+        final value = after.startsWith(':') ? after.substring(1).trim() : after;
+        if (value.isNotEmpty) return value;
+        // Check next line
+        if (i + 1 < lines.length) {
+          final next = lines[i + 1].trim();
+          final cleaned = next.startsWith(':') ? next.substring(1).trim() : next;
+          if (cleaned.isNotEmpty && !_isLabel(cleaned)) return cleaned;
         }
-        final afterLabel = line.substring(idx + label.length);
-        final value = _valueOnSameLineOrNext(rawLines, i, afterLabel);
-        if (value.isNotEmpty) {
-          return value;
+      }
+
+      // Format: "NAME\n:John" — label on one line, colon+value on next
+      if (lower == 'name') {
+        if (i + 1 < lines.length) {
+          final next = lines[i + 1].trim();
+          final cleaned = next.startsWith(':') ? next.substring(1).trim() : next;
+          if (cleaned.isNotEmpty && !_isLabel(cleaned)) return cleaned;
         }
       }
     }
     return '';
   }
 
-  static String _extractGender(String text) {
-    final rawLines = text.split(RegExp(r'\r?\n'));
-    for (var i = 0; i < rawLines.length; i++) {
-      final line = rawLines[i].trim();
+  static String _extractDob(List<String> lines) {
+    final dobLabels = ['date of birth:', 'd.o.b:', 'dob:', 'date of birth', 'd.o.b', 'dob'];
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
       final lower = line.toLowerCase();
-      const genderLabel = 'gender:';
-      if (lower.contains(genderLabel)) {
-        final idx = lower.indexOf(genderLabel);
-        final afterLabel = line.substring(idx + genderLabel.length);
-        final value = _valueOnSameLineOrNext(rawLines, i, afterLabel);
-        if (value.isNotEmpty) {
-          return value;
-        }
-      }
-      final sexMatch = RegExp(r'\bsex\s*:', caseSensitive: false)
-          .firstMatch(line);
-      if (sexMatch != null) {
-        final afterLabel = line.substring(sexMatch.end);
-        final value = _valueOnSameLineOrNext(rawLines, i, afterLabel);
-        if (value.isNotEmpty) {
-          return value;
+
+      for (final label in dobLabels) {
+        if (lower.contains(label)) {
+          final idx = lower.indexOf(label);
+          final after = line.substring(idx + label.length).trim();
+          final value = after.startsWith(':') ? after.substring(1).trim() : after;
+          if (value.isNotEmpty) return value;
+          // Check next line
+          if (i + 1 < lines.length) {
+            final next = lines[i + 1].trim();
+            final cleaned = next.startsWith(':') ? next.substring(1).trim() : next;
+            if (cleaned.isNotEmpty && !_isLabel(cleaned)) return cleaned;
+          }
         }
       }
     }
     return '';
+  }
+
+  static String _extractGender(List<String> lines) {
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      final lower = line.toLowerCase();
+
+      if (lower.contains('gender:') || lower.contains('sex:')) {
+        final idx = lower.contains('gender:') ? lower.indexOf('gender:') + 7 : lower.indexOf('sex:') + 4;
+        final after = line.substring(idx).trim();
+        final value = after.startsWith(':') ? after.substring(1).trim() : after;
+        if (value.isNotEmpty) return value;
+        if (i + 1 < lines.length) {
+          final next = lines[i + 1].trim();
+          final cleaned = next.startsWith(':') ? next.substring(1).trim() : next;
+          if (cleaned.isNotEmpty && !_isLabel(cleaned)) return cleaned;
+        }
+      }
+
+      // Blood group sometimes appears near gender on ID cards
+      // Check for M/F/Male/Female standalone
+      if (['male', 'female', 'm', 'f'].contains(lower.trim())) {
+        return line.trim();
+      }
+    }
+    return '';
+  }
+
+  // Checks if a line looks like a label (all caps or ends with colon)
+  static bool _isLabel(String line) {
+    return line.endsWith(':') || line == line.toUpperCase();
   }
 }

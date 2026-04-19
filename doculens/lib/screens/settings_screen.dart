@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:doculens/services/telemetry_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,7 +9,15 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final TelemetryService _telemetry = TelemetryService();
   bool _telemetryEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _telemetryEnabled = _telemetry.isEnabled;
+    _telemetry.logScreenView('settings_screen');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +34,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {
                 _telemetryEnabled = value;
               });
+              _telemetry.setEnabled(value);
+              _telemetry.logTelemetryToggled(value);
             },
           ),
           ListTile(
-            title: const Text('Telemetry status'),
+            title: const Text('Telemetry Status'),
             trailing: Text(
               _telemetryEnabled ? 'Active' : 'Inactive',
               style: TextStyle(

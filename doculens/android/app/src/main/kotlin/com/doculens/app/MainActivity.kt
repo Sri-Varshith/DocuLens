@@ -1,4 +1,4 @@
-package com.example.doculens
+package com.doculens.app
 
 import io.flutter.embedding.android.FlutterActivity
 
