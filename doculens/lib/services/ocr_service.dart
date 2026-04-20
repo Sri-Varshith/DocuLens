@@ -131,32 +131,63 @@ class OcrService {
     return rawGender;
   }
 
-  /// Your original heuristic logic, slightly cleaned up, acts as a fallback
-  String _extractNameHeuristic(List<String> lines) {
-    final nameLabels = ['name', 'name:', 'name -', 'name: '];
-    
+String _extractNameHeuristic(List<String> lines) {
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
       final lower = line.toLowerCase();
 
-      for (final label in nameLabels) {
-        if (lower.startsWith(label)) {
-          var value = line.substring(label.length).trim();
-          // Strip any leading colons or hyphens that got attached to the value
-          value = value.replaceAll(RegExp(r'^[:\-\s]+'), '').trim();
-          if (value.isNotEmpty) return value;
-        }
-      }
+      // 1. Broad match: Catches "Name:", "Full Name:", "Student Name", etc.
+      if (lower.contains('name')) {
+        
+        // Find where 'name' is in the string, and grab everything after it
+        final idx = lower.indexOf('name');
+        String extractedValue = line.substring(idx + 4); // 4 is the length of 'name'
+        
+        // Use Regex to obliterate any leading colons, hyphens, and unlimited spaces
+        extractedValue = extractedValue.replaceAll(RegExp(r'^[:\-\s]+'), '').trim();
 
-      // Check if "NAME" is on its own line, and grab the line below it
-      if (lower == 'name' && i + 1 < lines.length) {
-        final nextLine = lines[i + 1].trim();
-        // Make sure the next line isn't just another label
-        if (!nextLine.toLowerCase().contains('dob') && !nextLine.toLowerCase().contains('gender')) {
-           return nextLine;
+        // Case A: The value was on the same line (e.g., "name:           rahul")
+        if (extractedValue.isNotEmpty && !_isForbiddenLabel(extractedValue)) {
+          return extractedValue;
+        }
+
+        // Case B: The OCR broke "rahul" onto the very next line
+        if (i + 1 < lines.length) {
+          final nextLine = lines[i + 1].trim();
+          
+          // Ensure we don't accidentally grab "Grade: 10" if 'rahul' was missing
+          if (nextLine.isNotEmpty && !_isForbiddenLabel(nextLine)) {
+            return nextLine;
+          }
         }
       }
     }
+
+    // 2. Structural Fallback: If the label "Name" was totally destroyed by glare
+    // Look for a line that is purely alphabetical with at least one space (First Last)
+    final pureNameRegex = RegExp(r'^[A-Za-z]+\s+[A-Za-z\s]+$'); 
+    for (var line in lines) {
+      if (pureNameRegex.hasMatch(line) && !_isForbiddenLabel(line)) {
+        return line;
+      }
+    }
+
     return '';
+  }
+
+  /// Safety Net: Prevents the Name extractor from stealing other data points
+  bool _isForbiddenLabel(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('dob') || 
+           lower.contains('date') || 
+           lower.contains('gender') || 
+           lower.contains('sex') || 
+           lower.contains('grade') || 
+           lower.contains('class') ||
+           lower.contains('father') ||
+           lower.contains('mother') ||
+           lower.contains('blood') ||
+           lower.contains('id') ||
+           lower.contains('no');
   }
 }
