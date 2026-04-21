@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:doculens/screens/home_screen.dart';
+import 'package:doculens/theme/app_theme.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,10 +18,7 @@ class DocuLensApp extends StatelessWidget {
     return MaterialApp(
       title: 'DocuLens',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.darkTheme,
       home: const HomeScreen(),
     );
   }
