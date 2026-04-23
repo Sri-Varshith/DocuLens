@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:doculens/models/document_data.dart';
 import 'package:doculens/services/ocr_service.dart';
 import 'package:doculens/services/telemetry_service.dart';
+import 'package:doculens/theme/app_theme.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -23,6 +24,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   DocumentData _documentData = const DocumentData();
   XFile? _capturedImage;
   bool _isProcessing = false;
+  bool _hasScanned = false;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       setState(() {
         _documentData = data;
         _isProcessing = false;
+        _hasScanned = true;
       });
 
       await _telemetry.logOcrSuccess(
@@ -174,8 +177,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
     required VoidCallback onEdit,
     required int delayMs, // For staggered animations
   }) {
-    final displayValue = value.isEmpty ? 'Waiting for scan...' : value;
     final (badgeColor, badgeText) = _getConfidenceData(confidence);
+    final displayValue = value.isEmpty 
+    ? (_hasScanned ? 'Not detected' : 'Waiting for scan...') 
+    : value;
     final theme = Theme.of(context);
 
     return Container(
@@ -222,7 +227,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w500,
-                          color: value.isEmpty ? theme.colorScheme.onSurface.withOpacity(0.3) : theme.colorScheme.onSurface,
+                              color: value.isEmpty && _hasScanned
+        ? AppColors.error
+        : AppColors.textSecondary,
+
                         ),
                       ),
                     ],
