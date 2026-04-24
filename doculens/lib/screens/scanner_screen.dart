@@ -9,6 +9,8 @@ import 'package:doculens/models/document_data.dart';
 import 'package:doculens/services/ocr_service.dart';
 import 'package:doculens/services/telemetry_service.dart';
 import 'package:doculens/theme/app_theme.dart';
+import 'package:doculens/services/database_service.dart';
+import 'package:doculens/models/document_record.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -25,6 +27,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
   XFile? _capturedImage;
   bool _isProcessing = false;
   bool _hasScanned = false;
+  final DatabaseService _db = DatabaseService();
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -162,6 +166,124 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
+  Future<void> _saveDocument() async {
+  // Don't save if nothing was scanned
+  if (!_hasScanned) return;
+
+  // Step 1: Ask user to name the document
+final nameController = TextEditingController();
+
+  final docName = await showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final theme = Theme.of(ctx);
+      return AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
+        ),
+        title: Text(
+          'Name this document',
+          style: TextStyle(color: theme.colorScheme.onSurface),
+        ),
+        content: TextField(
+          controller: nameController,
+          autofocus: true,
+          style: TextStyle(color: theme.colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'e.g. My Aadhaar Card',
+            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: theme.colorScheme.outline),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: theme.colorScheme.primary),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty) Navigator.pop(ctx, name);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    },
+  );
+
+  // User cancelled the dialog
+  if (docName == null || docName.isEmpty) return;
+
+  setState(() => _isSaving = true);
+
+  try {
+    // Step 2: Move image from temp cache to permanent vault
+    final permanentPath = await _db.copyImageToVault(_capturedImage!.path);
+
+    // Step 3: Build the list of fields from current _documentData
+    // Only save fields that actually have a value
+    final fields = <DocumentField>[];
+
+    if (_documentData.name.isNotEmpty) {
+      fields.add(DocumentField(
+        documentId: 0,
+        fieldName: 'Name',
+        fieldValue: _documentData.name,
+      ));
+    }
+    if (_documentData.dob.isNotEmpty) {
+      fields.add(DocumentField(
+        documentId: 0,
+        fieldName: 'Date of Birth',
+        fieldValue: _documentData.dob,
+      ));
+    }
+    if (_documentData.gender.isNotEmpty) {
+      fields.add(DocumentField(
+        documentId: 0,
+        fieldName: 'Gender',
+        fieldValue: _documentData.gender,
+      ));
+    }
+
+    // Step 4: Build the DocumentRecord and save
+    final record = DocumentRecord(
+      name: docName,
+      imagePath: permanentPath,
+      createdAt: DateTime.now(),
+      fields: fields,
+    );
+
+    await _db.insertDocument(record);
+
+    if (!mounted) return;
+    _showCustomSnackBar('Document saved successfully');
+    Navigator.pop(context);
+
+  } catch (e) {
+    if (!mounted) return;
+    _showCustomSnackBar('Failed to save. Please try again.', isError: true);
+  } finally {
+    if (mounted) setState(() => _isSaving = false);
+  }
+}
+
   // Helper to determine badge color and text based on confidence
   (Color, String) _getConfidenceData(double confidence) {
     if (confidence >= 0.7) return (const Color(0xFF10B981), 'High'); // Emerald Green
@@ -270,154 +392,177 @@ class _ScannerScreenState extends State<ScannerScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- Top Section: Scanner Viewport ---
-                Expanded(
-                  flex: 5,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 500),
-                      child: GestureDetector(
-                        onTap: _scanDocument,
-                        child: Container(
-                          width: double.infinity,
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(24),
-                            // Neon glowing border
-                            border: Border.all(
-                              color: _capturedImage == null ? theme.colorScheme.primary.withOpacity(0.3) : theme.colorScheme.outline.withOpacity(0.2),
-                              width: 1.5,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- Top Section: Scanner Viewport ---
+                  Expanded(
+                    flex: 5,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: GestureDetector(
+                          onTap: _scanDocument,
+                          child: Container(
+                            width: double.infinity,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(24),
+                              // Neon glowing border
+                              border: Border.all(
+                                color: _capturedImage == null ? theme.colorScheme.primary.withOpacity(0.3) : theme.colorScheme.outline.withOpacity(0.2),
+                                width: 1.5,
+                              ),
+                              boxShadow: _capturedImage == null ? [
+                                BoxShadow(color: theme.colorScheme.primary.withOpacity(0.15), blurRadius: 30, spreadRadius: 2, offset: const Offset(0, 10))
+                              ] : [],
                             ),
-                            boxShadow: _capturedImage == null ? [
-                              BoxShadow(color: theme.colorScheme.primary.withOpacity(0.15), blurRadius: 30, spreadRadius: 2, offset: const Offset(0, 10))
-                            ] : [],
+                            child: _capturedImage == null
+                                ? _buildEmptyScannerState(theme)
+                                : _buildImagePreviewState(theme),
                           ),
-                          child: _capturedImage == null
-                              ? _buildEmptyScannerState(theme)
-                              : _buildImagePreviewState(theme),
                         ),
                       ),
                     ),
+                  ).animate().fade(duration: 500.ms).scale(begin: const Offset(0.95, 0.95)),
+        
+                  const SizedBox(height: 32),
+                  
+                  // --- Bottom Section: Extracted Data ---
+                  Text(
+                    'Extracted Data',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                    ),
+                  ).animate().fade(delay: 200.ms),
+                  const SizedBox(height: 16),
+        
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          _buildFieldCard(
+                            label: 'FULL NAME',
+                            value: _documentData.name,
+                            confidence: _documentData.nameConfidence,
+                            delayMs: 300,
+                            onEdit: () => _editField(
+                              title: 'Name',
+                              initialValue: _documentData.name,
+                              telemetryFieldName: 'name',
+                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(name: value)),
+                            ),
+                          ),
+                          _buildFieldCard(
+                            label: 'DATE OF BIRTH',
+                            value: _documentData.dob,
+                            confidence: _documentData.dobConfidence,
+                            delayMs: 400,
+                            onEdit: () => _editField(
+                              title: 'Date of Birth',
+                              initialValue: _documentData.dob,
+                              telemetryFieldName: 'dob',
+                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(dob: value)),
+                            ),
+                          ),
+                          _buildFieldCard(
+                            label: 'GENDER',
+                            value: _documentData.gender,
+                            confidence: _documentData.genderConfidence,
+                            delayMs: 500,
+                            onEdit: () => _editField(
+                              title: 'Gender',
+                              initialValue: _documentData.gender,
+                              telemetryFieldName: 'gender',
+                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(gender: value)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ).animate().fade(duration: 500.ms).scale(begin: const Offset(0.95, 0.95)),
-
-                const SizedBox(height: 32),
-                
-                // --- Bottom Section: Extracted Data ---
-                Text(
-                  'Extracted Data',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface.withOpacity(0.8),
-                  ),
-                ).animate().fade(delay: 200.ms),
+        
                 const SizedBox(height: 16),
-
-                Expanded(
-                  flex: 6,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      children: [
-                        _buildFieldCard(
-                          label: 'FULL NAME',
-                          value: _documentData.name,
-                          confidence: _documentData.nameConfidence,
-                          delayMs: 300,
-                          onEdit: () => _editField(
-                            title: 'Name',
-                            initialValue: _documentData.name,
-                            telemetryFieldName: 'name',
-                            onSave: (value) => setState(() => _documentData = _documentData.copyWith(name: value)),
-                          ),
-                        ),
-                        _buildFieldCard(
-                          label: 'DATE OF BIRTH',
-                          value: _documentData.dob,
-                          confidence: _documentData.dobConfidence,
-                          delayMs: 400,
-                          onEdit: () => _editField(
-                            title: 'Date of Birth',
-                            initialValue: _documentData.dob,
-                            telemetryFieldName: 'dob',
-                            onSave: (value) => setState(() => _documentData = _documentData.copyWith(dob: value)),
-                          ),
-                        ),
-                        _buildFieldCard(
-                          label: 'GENDER',
-                          value: _documentData.gender,
-                          confidence: _documentData.genderConfidence,
-                          delayMs: 500,
-                          onEdit: () => _editField(
-                            title: 'Gender',
-                            initialValue: _documentData.gender,
-                            telemetryFieldName: 'gender',
-                            onSave: (value) => setState(() => _documentData = _documentData.copyWith(gender: value)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // --- Processing Overlay (Glassmorphism) ---
-          if (_isProcessing)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: Container(
-                  color: theme.scaffoldBackgroundColor.withOpacity(0.5),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // A cooler loading indicator
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              width: 80,
-                              height: 80,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: theme.colorScheme.primary.withOpacity(0.3),
-                              ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: (_hasScanned && !_isSaving) ? _saveDocument : null,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
                             ),
-                            SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            Icon(Icons.document_scanner, color: theme.colorScheme.primary),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Extracting data...',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1),
-                        ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
-                      ],
-                    ),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_isSaving ? 'Saving...' : 'Save Document'),
                   ),
-                ),
+                ).animate().fade(delay: 600.ms).slideY(begin: 0.2, end: 0),
+                const SizedBox(height: 16),
+                ],
+                
               ),
-            ).animate().fadeIn(duration: 300.ms),
-        ],
+            ),
+        
+            // --- Processing Overlay (Glassmorphism) ---
+            if (_isProcessing)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // A cooler loading indicator
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              SizedBox(
+                                width: 80,
+                                height: 80,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.primary.withOpacity(0.3),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              Icon(Icons.document_scanner, color: theme.colorScheme.primary),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Extracting data...',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1),
+                          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ).animate().fadeIn(duration: 300.ms),
+          ],
+        ),
       ),
     );
   }
