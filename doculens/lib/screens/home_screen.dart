@@ -1,15 +1,40 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart'; // Added for fluid motion
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:doculens/screens/scanner_screen.dart';
 import 'package:doculens/screens/settings_screen.dart';
-// import 'your_path/app_colors.dart'; // Ensure your AppColors is imported
+import 'package:doculens/services/database_service.dart';
+import 'package:doculens/models/document_record.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final DatabaseService _db = DatabaseService();
+  List<DocumentRecord> _documents = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDocuments();
+  }
+
+  Future<void> _loadDocuments() async {
+    final docs = await _db.getAllDocuments();
+    if (!mounted) return;
+    setState(() {
+      _documents = docs;
+      _isLoading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Assuming AppTheme is applied in main.dart, but we'll use Theme.of for safety
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
@@ -62,13 +87,14 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
 
-              // --- Hero Action Card (The "Crazy" Aesthetic part) ---
+              // --- Hero Action Card ---
               GestureDetector(
-                onTap: () {
-                  Navigator.push(
+                onTap: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ScannerScreen()),
                   );
+                  _loadDocuments(); // refresh list after returning from scanner
                 },
                 child: Container(
                   width: double.infinity,
@@ -81,7 +107,6 @@ class HomeScreen extends StatelessWidget {
                       width: 1.5,
                     ),
                     boxShadow: [
-                      // The Neon Glow Effect
                       BoxShadow(
                         color: primaryColor.withOpacity(0.15),
                         blurRadius: 30,
@@ -105,7 +130,6 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ).animate(onPlay: (controller) => controller.repeat(reverse: true))
                        .scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 2.seconds),
-                      
                       const SizedBox(height: 24),
                       Text(
                         'New Scan',
@@ -131,7 +155,7 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 48),
 
-              // --- Recent Scans Section (UI Teaser for Future Flow) ---
+              // --- Recent Documents Section ---
               Text(
                 'Recent Documents',
                 style: TextStyle(
@@ -140,23 +164,44 @@ class HomeScreen extends StatelessWidget {
                   color: theme.colorScheme.onSurface,
                 ),
               ).animate().fade(delay: 500.ms).slideX(begin: -0.1, end: 0),
-              
+
               const SizedBox(height: 16),
-              
-              // Placeholder List
+
               Expanded(
-                child: ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: 3, // Mock data count
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    // Staggered animation for list items
-                    return _buildRecentDocCard(context, index)
-                        .animate()
-                        .fade(delay: (600 + (100 * index)).ms)
-                        .slideY(begin: 0.2, end: 0);
-                  },
-                ),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _documents.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.folder_open_outlined,
+                                  size: 48,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No documents yet',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _documents.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              return _buildRecentDocCard(context, _documents[index])
+                                  .animate()
+                                  .fade(delay: (600 + (100 * index)).ms)
+                                  .slideY(begin: 0.2, end: 0);
+                            },
+                          ),
               ),
             ],
           ),
@@ -165,13 +210,23 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // --- Reusable Widget for Recent Documents ---
-  Widget _buildRecentDocCard(BuildContext context, int index) {
+  Widget _buildRecentDocCard(BuildContext context, DocumentRecord doc) {
     final theme = Theme.of(context);
-    
-    // Mock data just to make the UI look populated
-    final mockNames = ['Rahul Sharma', 'Ayesha Khan', 'John Doe'];
-    final mockDates = ['Today, 10:42 AM', 'Yesterday, 3:15 PM', 'Oct 12, 9:00 AM'];
+
+    final now = DateTime.now();
+    final date = doc.createdAt;
+    String dateLabel;
+    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+      final hour = date.hour.toString().padLeft(2, '0');
+      final min = date.minute.toString().padLeft(2, '0');
+      dateLabel = 'Today, $hour:$min';
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
+      dateLabel = 'Yesterday';
+    } else {
+      dateLabel = '${date.day}/${date.month}/${date.year}';
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -188,10 +243,7 @@ class HomeScreen extends StatelessWidget {
               color: theme.colorScheme.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              Icons.badge_outlined,
-              color: theme.colorScheme.primary,
-            ),
+            child: Icon(Icons.badge_outlined, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -199,7 +251,7 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  mockNames[index],
+                  doc.name,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -208,7 +260,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  mockDates[index],
+                  dateLabel,
                   style: TextStyle(
                     fontSize: 13,
                     color: theme.colorScheme.onSurface.withOpacity(0.5),
@@ -217,10 +269,7 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
-          Icon(
-            Icons.chevron_right,
-            color: theme.colorScheme.onSurface.withOpacity(0.3),
-          ),
+          Icon(Icons.chevron_right, color: theme.colorScheme.onSurface.withOpacity(0.3)),
         ],
       ),
     );
