@@ -12,6 +12,10 @@ import 'package:doculens/theme/app_theme.dart';
 import 'package:doculens/services/database_service.dart';
 import 'package:doculens/models/document_record.dart';
 
+// Import your new widgets
+import 'package:doculens/widgets/editable_field_card.dart';
+import 'package:doculens/widgets/edit_field_dialog.dart';
+
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
 
@@ -23,11 +27,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   final OcrService _ocrService = OcrService();
   final TelemetryService _telemetry = TelemetryService();
+  final DatabaseService _db = DatabaseService();
+
   DocumentData _documentData = const DocumentData();
   XFile? _capturedImage;
   bool _isProcessing = false;
   bool _hasScanned = false;
-  final DatabaseService _db = DatabaseService();
   bool _isSaving = false;
 
   @override
@@ -39,10 +44,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _scanDocument() async {
     if (_isProcessing) return;
 
-    final XFile? pickedImage = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-    );
-
+    final XFile? pickedImage = await _imagePicker.pickImage(source: ImageSource.camera);
     if (pickedImage == null) return;
 
     if (!mounted) return;
@@ -76,12 +78,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
         isError: data.name.isEmpty && data.dob.isEmpty && data.gender.isEmpty,
       );
     } catch (e) {
-      print('OCR Error: $e');
       await _telemetry.logOcrFailed();
       if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-      });
+      setState(() => _isProcessing = false);
       _showCustomSnackBar('OCR failed, please try again', isError: true);
     }
   }
@@ -89,74 +88,47 @@ class _ScannerScreenState extends State<ScannerScreen> {
   void _showCustomSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        content: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isError ? Colors.red.shade900.withOpacity(0.9) : Theme.of(context).colorScheme.primary.withOpacity(0.9),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.2)),
-            boxShadow: [
-              BoxShadow(
-                color: (isError ? Colors.red : Theme.of(context).colorScheme.primary).withOpacity(0.3),
-                blurRadius: 20,
-                spreadRadius: 2,
-              )
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(isError ? Icons.error_outline : Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
-            ],
-          ),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        content: Row(
+          children: [
+            Icon(isError ? Icons.error_outline : Icons.check_circle_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _editField({
-    required String title,
-    required String initialValue,
-    required String telemetryFieldName,
-    required void Function(String value) onSave,
-  }) async {
-    final controller = TextEditingController(text: initialValue);
+  Future<void> _saveDocument() async {
+    if (!_hasScanned) return;
 
-    await showDialog<void>(
+    // Use the new dialog widget pattern for the name dialog too
+    final docName = await showDialog<String>(
       context: context,
-      builder: (context) {
-        final theme = Theme.of(context);
+      barrierDismissible: false,
+      builder: (ctx) {
+        final nameController = TextEditingController();
         return AlertDialog(
-          backgroundColor: theme.colorScheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2))),
-          title: Text('Edit $title', style: TextStyle(color: theme.colorScheme.onSurface)),
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Name Document', style: TextStyle(color: AppColors.textPrimary)),
           content: TextField(
-            controller: controller,
-            style: TextStyle(color: theme.colorScheme.onSurface),
-            decoration: InputDecoration(
-              labelText: title,
-              labelStyle: TextStyle(color: theme.colorScheme.primary),
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.outline)),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.primary)),
-            ),
+            controller: nameController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'e.g. My Aadhaar Card'),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6))),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
             ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
+            ElevatedButton(
               onPressed: () {
-                onSave(controller.text.trim());
-                _telemetry.logFieldEdited(telemetryFieldName);
-                Navigator.pop(context);
+                final name = nameController.text.trim();
+                if (name.isNotEmpty) Navigator.pop(ctx, name);
               },
               child: const Text('Save'),
             ),
@@ -164,488 +136,259 @@ class _ScannerScreenState extends State<ScannerScreen> {
         );
       },
     );
-  }
 
-  Future<void> _saveDocument() async {
-  // Don't save if nothing was scanned
-  if (!_hasScanned) return;
+    if (docName == null || docName.isEmpty) return;
 
-  // Step 1: Ask user to name the document
-final nameController = TextEditingController();
+    setState(() => _isSaving = true);
 
-  final docName = await showDialog<String>(
-    context: context,
-    barrierDismissible: false,
-    builder: (ctx) {
-      final theme = Theme.of(ctx);
-      return AlertDialog(
-        backgroundColor: theme.colorScheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
-        ),
-        title: Text(
-          'Name this document',
-          style: TextStyle(color: theme.colorScheme.onSurface),
-        ),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          style: TextStyle(color: theme.colorScheme.onSurface),
-          decoration: InputDecoration(
-            hintText: 'e.g. My Aadhaar Card',
-            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4)),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: theme.colorScheme.outline),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: theme.colorScheme.primary),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6)),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              final name = nameController.text.trim();
-              if (name.isNotEmpty) Navigator.pop(ctx, name);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      );
-    },
-  );
+    try {
+      final permanentPath = await _db.copyImageToVault(_capturedImage!.path);
+      final fields = <DocumentField>[];
 
-  // User cancelled the dialog
-  if (docName == null || docName.isEmpty) return;
-
-  setState(() => _isSaving = true);
-
-  try {
-    // Step 2: Move image from temp cache to permanent vault
-    final permanentPath = await _db.copyImageToVault(_capturedImage!.path);
-
-    // Step 3: Build the list of fields from current _documentData
-    // Only save fields that actually have a value
-    final fields = <DocumentField>[];
-
-    if (_documentData.name.isNotEmpty) {
-      fields.add(DocumentField(
-        documentId: 0,
-        fieldName: 'Name',
-        fieldValue: _documentData.name,
-      ));
-    }
-    if (_documentData.dob.isNotEmpty) {
-      fields.add(DocumentField(
-        documentId: 0,
-        fieldName: 'Date of Birth',
-        fieldValue: _documentData.dob,
-      ));
-    }
-    if (_documentData.gender.isNotEmpty) {
-      fields.add(DocumentField(
-        documentId: 0,
-        fieldName: 'Gender',
-        fieldValue: _documentData.gender,
-      ));
-    }
-
-    // Step 4: Build the DocumentRecord and save
-    final record = DocumentRecord(
-      name: docName,
-      imagePath: permanentPath,
-      createdAt: DateTime.now(),
-      fields: fields,
-    );
-
-    await _db.insertDocument(record);
-
-    if (!mounted) return;
-    _showCustomSnackBar('Document saved successfully');
-    Navigator.pop(context);
-
-  } catch (e) {
-    if (!mounted) return;
-    _showCustomSnackBar('Failed to save. Please try again.', isError: true);
-  } finally {
-    if (mounted) setState(() => _isSaving = false);
-  }
+if (_documentData.name.isNotEmpty) {
+  fields.add(DocumentField(documentId: 0, fieldName: 'Name', fieldValue: _documentData.name));
 }
 
-  // Helper to determine badge color and text based on confidence
-  (Color, String) _getConfidenceData(double confidence) {
-    if (confidence >= 0.7) return (const Color(0xFF10B981), 'High'); // Emerald Green
-    if (confidence >= 0.4) return (const Color(0xFFF59E0B), 'Medium'); // Amber
-    return (const Color(0xFFEF4444), 'Low'); // Red
+if (_documentData.dob.isNotEmpty) {
+  fields.add(DocumentField(documentId: 0, fieldName: 'Date of Birth', fieldValue: _documentData.dob));
+}
+
+if (_documentData.gender.isNotEmpty) {
+  fields.add(DocumentField(documentId: 0, fieldName: 'Gender', fieldValue: _documentData.gender));
+}
+
+      final record = DocumentRecord(name: docName, imagePath: permanentPath, createdAt: DateTime.now(), fields: fields);
+      await _db.insertDocument(record);
+
+      if (!mounted) return;
+      _showCustomSnackBar('Document saved successfully');
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      _showCustomSnackBar('Failed to save. Please try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
-  // --- Upgraded Data Cards ---
-  Widget _buildFieldCard({
-    required String label,
-    required String value,
-    required double confidence,
-    required VoidCallback onEdit,
-    required int delayMs, // For staggered animations
-  }) {
-    final (badgeColor, badgeText) = _getConfidenceData(confidence);
-    final displayValue = value.isEmpty 
-    ? (_hasScanned ? 'Not detected' : 'Waiting for scan...') 
-    : value;
-    final theme = Theme.of(context);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.1)),
-        boxShadow: value.isNotEmpty ? [
-          // Subtle glow if data exists
-          BoxShadow(
-            color: badgeColor.withOpacity(0.05),
-            blurRadius: 15,
-            spreadRadius: -2,
-            offset: const Offset(0, 4),
-          )
-        ] : [],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan Document'),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onEdit,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // --- Top Section: Scanner Viewport ---
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
-                          letterSpacing: 0.5,
+                  flex: 4,
+                  child: GestureDetector(
+                    onTap: _scanDocument,
+                    child: Container(
+                      width: double.infinity,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLight,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _capturedImage == null ? AppColors.primary.withOpacity(0.5) : AppColors.border,
+                          width: _capturedImage == null ? 2 : 1,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        displayValue,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                              color: value.isEmpty && _hasScanned
-        ? AppColors.error
-        : AppColors.textSecondary,
+                      child: _capturedImage == null
+                          ? _buildEmptyScannerState()
+                          : _buildImagePreviewState(),
+                    ),
+                  ),
+                ).animate().fade(duration: 400.ms),
 
+                const SizedBox(height: 24),
+
+                // --- Bottom Section: Extracted Data ---
+                const Text(
+                  'Extracted Data',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ).animate().fade(delay: 200.ms),
+                const SizedBox(height: 16),
+
+                Expanded(
+                  flex: 6,
+                  child: ListView(
+                    physics: const BouncingScrollPhysics(),
+                    children: [
+                      EditableFieldCard(
+                        label: 'Name',
+                        value: _documentData.name,
+                        confidence: _documentData.nameConfidence,
+                        hasScanned: _hasScanned,
+                        delayMs: 300,
+                        onEdit: () => EditFieldDialog.show(
+                          context: context,
+                          title: 'Name',
+                          initialValue: _documentData.name,
+                          onSave: (val) {
+                            setState(() => _documentData = _documentData.copyWith(name: val));
+                            _telemetry.logFieldEdited('name');
+                          },
+                        ),
+                      ),
+                      EditableFieldCard(
+                        label: 'Date of Birth',
+                        value: _documentData.dob,
+                        confidence: _documentData.dobConfidence,
+                        hasScanned: _hasScanned,
+                        delayMs: 400,
+                        onEdit: () => EditFieldDialog.show(
+                          context: context,
+                          title: 'Date of Birth',
+                          initialValue: _documentData.dob,
+                          onSave: (val) {
+                            setState(() => _documentData = _documentData.copyWith(dob: val));
+                            _telemetry.logFieldEdited('dob');
+                          },
+                        ),
+                      ),
+                      EditableFieldCard(
+                        label: 'Gender',
+                        value: _documentData.gender,
+                        confidence: _documentData.genderConfidence,
+                        hasScanned: _hasScanned,
+                        delayMs: 500,
+                        onEdit: () => EditFieldDialog.show(
+                          context: context,
+                          title: 'Gender',
+                          initialValue: _documentData.gender,
+                          onSave: (val) {
+                            setState(() => _documentData = _documentData.copyWith(gender: val));
+                            _telemetry.logFieldEdited('gender');
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (value.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: badgeColor.withOpacity(0.5)),
-                    ),
-                    child: Text(
-                      badgeText,
-                      style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                const SizedBox(width: 12),
-                Icon(Icons.edit_rounded, color: theme.colorScheme.onSurface.withOpacity(0.3), size: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).animate().fade(delay: delayMs.ms).slideX(begin: 0.1, end: 0);
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Scan Document', style: TextStyle(fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // --- Top Section: Scanner Viewport ---
-                  Expanded(
-                    flex: 5,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 500),
-                        child: GestureDetector(
-                          onTap: _scanDocument,
-                          child: Container(
-                            width: double.infinity,
-                            clipBehavior: Clip.antiAlias,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(24),
-                              // Neon glowing border
-                              border: Border.all(
-                                color: _capturedImage == null ? theme.colorScheme.primary.withOpacity(0.3) : theme.colorScheme.outline.withOpacity(0.2),
-                                width: 1.5,
-                              ),
-                              boxShadow: _capturedImage == null ? [
-                                BoxShadow(color: theme.colorScheme.primary.withOpacity(0.15), blurRadius: 30, spreadRadius: 2, offset: const Offset(0, 10))
-                              ] : [],
-                            ),
-                            child: _capturedImage == null
-                                ? _buildEmptyScannerState(theme)
-                                : _buildImagePreviewState(theme),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ).animate().fade(duration: 500.ms).scale(begin: const Offset(0.95, 0.95)),
-        
-                  const SizedBox(height: 32),
-                  
-                  // --- Bottom Section: Extracted Data ---
-                  Text(
-                    'Extracted Data',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
-                    ),
-                  ).animate().fade(delay: 200.ms),
-                  const SizedBox(height: 16),
-        
-                  Expanded(
-                    flex: 6,
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Column(
-                        children: [
-                          _buildFieldCard(
-                            label: 'FULL NAME',
-                            value: _documentData.name,
-                            confidence: _documentData.nameConfidence,
-                            delayMs: 300,
-                            onEdit: () => _editField(
-                              title: 'Name',
-                              initialValue: _documentData.name,
-                              telemetryFieldName: 'name',
-                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(name: value)),
-                            ),
-                          ),
-                          _buildFieldCard(
-                            label: 'DATE OF BIRTH',
-                            value: _documentData.dob,
-                            confidence: _documentData.dobConfidence,
-                            delayMs: 400,
-                            onEdit: () => _editField(
-                              title: 'Date of Birth',
-                              initialValue: _documentData.dob,
-                              telemetryFieldName: 'dob',
-                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(dob: value)),
-                            ),
-                          ),
-                          _buildFieldCard(
-                            label: 'GENDER',
-                            value: _documentData.gender,
-                            confidence: _documentData.genderConfidence,
-                            delayMs: 500,
-                            onEdit: () => _editField(
-                              title: 'Gender',
-                              initialValue: _documentData.gender,
-                              telemetryFieldName: 'gender',
-                              onSave: (value) => setState(() => _documentData = _documentData.copyWith(gender: value)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-        
+                // --- Save Button ---
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: (_hasScanned && !_isSaving) ? _saveDocument : null,
                     icon: _isSaving
                         ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.save_outlined),
-                    label: Text(_isSaving ? 'Saving...' : 'Save Document'),
+                    label: Text(_isSaving ? 'Saving...' : 'Save to Vault'),
                   ),
                 ).animate().fade(delay: 600.ms).slideY(begin: 0.2, end: 0),
-                const SizedBox(height: 16),
-                ],
-                
-              ),
+              ],
             ),
-        
-            // --- Processing Overlay (Glassmorphism) ---
-            if (_isProcessing)
-              Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    color: theme.scaffoldBackgroundColor.withOpacity(0.5),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // A cooler loading indicator
-                          Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              SizedBox(
-                                width: 80,
-                                height: 80,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.primary.withOpacity(0.3),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              Icon(Icons.document_scanner, color: theme.colorScheme.primary),
-                            ],
+          ),
+
+          // --- Processing Overlay (Light Glassmorphism) ---
+          if (_isProcessing)
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(
+                  color: Colors.white.withOpacity(0.6),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: AppColors.primary),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Extracting details...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
                           ),
-                          const SizedBox(height: 24),
-                          const Text(
-                            'Extracting data...',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1),
-                          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
-                        ],
-                      ),
+                        ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
+                      ],
                     ),
                   ),
                 ),
-              ).animate().fadeIn(duration: 300.ms),
-          ],
-        ),
+              ),
+            ).animate().fadeIn(duration: 200.ms),
+        ],
       ),
     );
   }
 
-  // --- Helper Widgets ---
+  // --- Viewport UI Helpers ---
 
-  Widget _buildEmptyScannerState(ThemeData theme) {
+  Widget _buildEmptyScannerState() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withOpacity(0.1),
+            color: AppColors.primary.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            Icons.center_focus_weak_rounded,
-            size: 56,
-            color: theme.colorScheme.primary,
-          ),
-        ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 2.seconds),
-        const SizedBox(height: 24),
-        Text(
-          'Tap to open camera',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: theme.colorScheme.onSurface,
+          child: const Icon(
+            Icons.document_scanner_outlined,
+            size: 48,
+            color: AppColors.primary,
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Position ID clearly in frame',
-          style: TextStyle(
-            fontSize: 14,
-            color: theme.colorScheme.onSurface.withOpacity(0.5),
-          ),
+        const SizedBox(height: 16),
+        const Text(
+          'Tap to Scan ID',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Ensure the document is well-lit',
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
       ],
     );
   }
 
-  Widget _buildImagePreviewState(ThemeData theme) {
+  Widget _buildImagePreviewState() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(
-          File(_capturedImage!.path),
-          fit: BoxFit.cover,
-        ),
-        // A dark gradient overlay to make the retake button visible
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+        Image.file(File(_capturedImage!.path), fit: BoxFit.cover),
+        // Faint bottom shadow to make the retake button pop
+        Positioned(
+          bottom: 0, left: 0, right: 0,
+          height: 80,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+              ),
             ),
           ),
         ),
         Positioned(
-          bottom: 16,
-          right: 16,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: ElevatedButton.icon(
-                onPressed: _scanDocument,
-                icon: const Icon(Icons.refresh_rounded, size: 20),
-                label: const Text('Retake', style: TextStyle(fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withOpacity(0.15),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                  ),
-                ),
-              ),
+          bottom: 12, right: 12,
+          child: OutlinedButton.icon(
+            onPressed: _scanDocument,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Retake'),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.textPrimary,
+              side: const BorderSide(color: Colors.transparent),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
             ),
           ),
         ),
