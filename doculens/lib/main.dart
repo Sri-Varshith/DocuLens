@@ -18,7 +18,7 @@ class DocuLensApp extends StatelessWidget {
     return MaterialApp(
       title: 'DocuLens',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       home: const HomeScreen(),
     );
   }
