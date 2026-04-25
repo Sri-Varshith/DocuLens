@@ -28,6 +28,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final OcrService _ocrService = OcrService();
   final TelemetryService _telemetry = TelemetryService();
   final DatabaseService _db = DatabaseService();
+  final Set<String> _editedFields = {};
 
   DocumentData _documentData = const DocumentData();
   XFile? _capturedImage;
@@ -230,13 +231,17 @@ if (_documentData.gender.isNotEmpty) {
                         value: _documentData.name,
                         confidence: _documentData.nameConfidence,
                         hasScanned: _hasScanned,
+                        isEdited: _editedFields.contains('name'),
                         delayMs: 300,
                         onEdit: () => EditFieldDialog.show(
                           context: context,
                           title: 'Name',
                           initialValue: _documentData.name,
                           onSave: (val) {
-                            setState(() => _documentData = _documentData.copyWith(name: val));
+                            setState(() {
+                              _documentData = _documentData.copyWith(name: val);
+                              _editedFields.add('name');
+                            });
                             _telemetry.logFieldEdited('name');
                           },
                         ),
@@ -244,6 +249,7 @@ if (_documentData.gender.isNotEmpty) {
                       EditableFieldCard(
                         label: 'Date of Birth',
                         value: _documentData.dob,
+                        isEdited: _editedFields.contains('dob'),
                         confidence: _documentData.dobConfidence,
                         hasScanned: _hasScanned,
                         delayMs: 400,
@@ -252,7 +258,10 @@ if (_documentData.gender.isNotEmpty) {
                           title: 'Date of Birth',
                           initialValue: _documentData.dob,
                           onSave: (val) {
-                            setState(() => _documentData = _documentData.copyWith(dob: val));
+                            setState(() {
+                              _documentData = _documentData.copyWith(dob: val);
+                              _editedFields.add('dob');
+                            });
                             _telemetry.logFieldEdited('dob');
                           },
                         ),
@@ -263,12 +272,16 @@ if (_documentData.gender.isNotEmpty) {
                         confidence: _documentData.genderConfidence,
                         hasScanned: _hasScanned,
                         delayMs: 500,
+                        isEdited: _editedFields.contains('gender'),
                         onEdit: () => EditFieldDialog.show(
                           context: context,
                           title: 'Gender',
                           initialValue: _documentData.gender,
                           onSave: (val) {
-                            setState(() => _documentData = _documentData.copyWith(gender: val));
+                            setState(() {
+                              _documentData = _documentData.copyWith(gender: val);
+                              _editedFields.add('gender');
+                            });
                             _telemetry.logFieldEdited('gender');
                           },
                         ),

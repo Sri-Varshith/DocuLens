@@ -9,11 +9,13 @@ class EditableFieldCard extends StatelessWidget {
   final bool hasScanned;
   final int delayMs;
   final VoidCallback onEdit;
+  final bool isEdited;
 
   const EditableFieldCard({
     super.key,
     required this.label,
     required this.value,
+    required this.isEdited,
     required this.confidence,
     required this.hasScanned,
     required this.delayMs,
@@ -21,6 +23,9 @@ class EditableFieldCard extends StatelessWidget {
   });
 
   (Color, Color, String) _getBadgeStyle() {
+      if (isEdited) {
+    return (const Color(0xFFEDE9FE), const Color.fromARGB(255, 58, 186, 237), 'Edited'); // your existing purple
+  }
     if (confidence >= 0.7) {
       return (const Color(0xFFD1FAE5), const Color(0xFF059669), 'High'); // Light/Dark Emerald
     }
