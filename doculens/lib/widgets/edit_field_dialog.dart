@@ -84,6 +84,7 @@ class _EditFieldDialogState extends State<EditFieldDialog> {
         ElevatedButton(
           onPressed: () {
             widget.onSave(_controller.text.trim());
+            
             Navigator.pop(context);
           },
           child: const Text('Save'),

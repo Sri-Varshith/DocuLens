@@ -134,4 +134,14 @@ class DatabaseService {
 
     await db.delete('documents', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> updateField(int fieldId, String newValue) async {
+  final db = await database;
+  await db.update(
+    'document_fields',
+    {'fieldValue': newValue},
+    where: 'id = ?',
+    whereArgs: [fieldId],
+  );
+}
 }

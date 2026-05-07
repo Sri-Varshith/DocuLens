@@ -178,165 +178,167 @@ if (_documentData.gender.isNotEmpty) {
       appBar: AppBar(
         title: const Text('Scan Document'),
       ),
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- Top Section: Scanner Viewport ---
-                Expanded(
-                  flex: 4,
-                  child: GestureDetector(
-                    onTap: _scanDocument,
-                    child: Container(
-                      width: double.infinity,
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _capturedImage == null ? AppColors.primary.withOpacity(0.5) : AppColors.border,
-                          width: _capturedImage == null ? 2 : 1,
-                        ),
-                      ),
-                      child: _capturedImage == null
-                          ? _buildEmptyScannerState()
-                          : _buildImagePreviewState(),
-                    ),
-                  ),
-                ).animate().fade(duration: 400.ms),
-
-                const SizedBox(height: 24),
-
-                // --- Bottom Section: Extracted Data ---
-                const Text(
-                  'Extracted Data',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ).animate().fade(delay: 200.ms),
-                const SizedBox(height: 16),
-
-                Expanded(
-                  flex: 6,
-                  child: ListView(
-                    physics: const BouncingScrollPhysics(),
-                    children: [
-                      EditableFieldCard(
-                        label: 'Name',
-                        value: _documentData.name,
-                        confidence: _documentData.nameConfidence,
-                        hasScanned: _hasScanned,
-                        isEdited: _editedFields.contains('name'),
-                        delayMs: 300,
-                        onEdit: () => EditFieldDialog.show(
-                          context: context,
-                          title: 'Name',
-                          initialValue: _documentData.name,
-                          onSave: (val) {
-                            setState(() {
-                              _documentData = _documentData.copyWith(name: val);
-                              _editedFields.add('name');
-                            });
-                            _telemetry.logFieldEdited('name');
-                          },
-                        ),
-                      ),
-                      EditableFieldCard(
-                        label: 'Date of Birth',
-                        value: _documentData.dob,
-                        isEdited: _editedFields.contains('dob'),
-                        confidence: _documentData.dobConfidence,
-                        hasScanned: _hasScanned,
-                        delayMs: 400,
-                        onEdit: () => EditFieldDialog.show(
-                          context: context,
-                          title: 'Date of Birth',
-                          initialValue: _documentData.dob,
-                          onSave: (val) {
-                            setState(() {
-                              _documentData = _documentData.copyWith(dob: val);
-                              _editedFields.add('dob');
-                            });
-                            _telemetry.logFieldEdited('dob');
-                          },
-                        ),
-                      ),
-                      EditableFieldCard(
-                        label: 'Gender',
-                        value: _documentData.gender,
-                        confidence: _documentData.genderConfidence,
-                        hasScanned: _hasScanned,
-                        delayMs: 500,
-                        isEdited: _editedFields.contains('gender'),
-                        onEdit: () => EditFieldDialog.show(
-                          context: context,
-                          title: 'Gender',
-                          initialValue: _documentData.gender,
-                          onSave: (val) {
-                            setState(() {
-                              _documentData = _documentData.copyWith(gender: val);
-                              _editedFields.add('gender');
-                            });
-                            _telemetry.logFieldEdited('gender');
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // --- Save Button ---
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: (_hasScanned && !_isSaving) ? _saveDocument : null,
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(_isSaving ? 'Saving...' : 'Save to Vault'),
-                  ),
-                ).animate().fade(delay: 600.ms).slideY(begin: 0.2, end: 0),
-              ],
-            ),
-          ),
-
-          // --- Processing Overlay (Light Glassmorphism) ---
-          if (_isProcessing)
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                child: Container(
-                  color: Colors.white.withOpacity(0.6),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(color: AppColors.primary),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Extracting details...',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- Top Section: Scanner Viewport ---
+                  Expanded(
+                    flex: 4,
+                    child: GestureDetector(
+                      onTap: _scanDocument,
+                      child: Container(
+                        width: double.infinity,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _capturedImage == null ? AppColors.primary.withOpacity(0.5) : AppColors.border,
+                            width: _capturedImage == null ? 2 : 1,
                           ),
-                        ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
+                        ),
+                        child: _capturedImage == null
+                            ? _buildEmptyScannerState()
+                            : _buildImagePreviewState(),
+                      ),
+                    ),
+                  ).animate().fade(duration: 400.ms),
+        
+                  const SizedBox(height: 24),
+        
+                  // --- Bottom Section: Extracted Data ---
+                  const Text(
+                    'Extracted Data',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ).animate().fade(delay: 200.ms),
+                  const SizedBox(height: 16),
+        
+                  Expanded(
+                    flex: 6,
+                    child: ListView(
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        EditableFieldCard(
+                          label: 'Name',
+                          value: _documentData.name,
+                          confidence: _documentData.nameConfidence,
+                          hasScanned: _hasScanned,
+                          isEdited: _editedFields.contains('name'),
+                          delayMs: 300,
+                          onEdit: () => EditFieldDialog.show(
+                            context: context,
+                            title: 'Name',
+                            initialValue: _documentData.name,
+                            onSave: (val) {
+                              setState(() {
+                                _documentData = _documentData.copyWith(name: val);
+                                _editedFields.add('name');
+                              });
+                              _telemetry.logFieldEdited('name');
+                            },
+                          ),
+                        ),
+                        EditableFieldCard(
+                          label: 'Date of Birth',
+                          value: _documentData.dob,
+                          isEdited: _editedFields.contains('dob'),
+                          confidence: _documentData.dobConfidence,
+                          hasScanned: _hasScanned,
+                          delayMs: 400,
+                          onEdit: () => EditFieldDialog.show(
+                            context: context,
+                            title: 'Date of Birth',
+                            initialValue: _documentData.dob,
+                            onSave: (val) {
+                              setState(() {
+                                _documentData = _documentData.copyWith(dob: val);
+                                _editedFields.add('dob');
+                              });
+                              _telemetry.logFieldEdited('dob');
+                            },
+                          ),
+                        ),
+                        EditableFieldCard(
+                          label: 'Gender',
+                          value: _documentData.gender,
+                          confidence: _documentData.genderConfidence,
+                          hasScanned: _hasScanned,
+                          delayMs: 500,
+                          isEdited: _editedFields.contains('gender'),
+                          onEdit: () => EditFieldDialog.show(
+                            context: context,
+                            title: 'Gender',
+                            initialValue: _documentData.gender,
+                            onSave: (val) {
+                              setState(() {
+                                _documentData = _documentData.copyWith(gender: val);
+                                _editedFields.add('gender');
+                              });
+                              _telemetry.logFieldEdited('gender');
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
+        
+                  // --- Save Button ---
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: (_hasScanned && !_isSaving) ? _saveDocument : null,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 20, height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(_isSaving ? 'Saving...' : 'Save to Vault'),
+                    ),
+                  ).animate().fade(delay: 600.ms).slideY(begin: 0.2, end: 0),
+                ],
               ),
-            ).animate().fadeIn(duration: 200.ms),
-        ],
+            ),
+        
+            // --- Processing Overlay (Light Glassmorphism) ---
+            if (_isProcessing)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(
+                    color: Colors.white.withOpacity(0.6),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: AppColors.primary),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Extracting details...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ).animate().fadeIn(duration: 200.ms),
+          ],
+        ),
       ),
     );
   }
