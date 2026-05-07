@@ -69,6 +69,43 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$min';
   }
 
+  Future<void> _deleteDocument() async {
+  // Show confirmation dialog first
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'Delete Document',
+        style: TextStyle(color: AppColors.textPrimary),
+      ),
+      content: Text(
+        'Are you sure you want to delete "${_document.name}"? This cannot be undone.',
+        style: const TextStyle(color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true) return;
+
+  await _db.deleteDocument(_document.id!);
+
+  if (!mounted) return;
+  Navigator.pop(context); // go back to home screen
+}
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -82,6 +119,12 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: _deleteDocument,
+            icon: const Icon(Icons.delete_outline, color: AppColors.error),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
