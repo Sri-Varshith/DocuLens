@@ -5,6 +5,7 @@ import 'package:doculens/screens/scanner_screen.dart';
 import 'package:doculens/screens/settings_screen.dart';
 import 'package:doculens/services/database_service.dart';
 import 'package:doculens/models/document_record.dart';
+import 'package:doculens/screens/document_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -196,10 +197,23 @@ class _HomeScreenState extends State<HomeScreen> {
                             itemCount: _documents.length,
                             separatorBuilder: (context, index) => const SizedBox(height: 12),
                             itemBuilder: (context, index) {
-                              return _buildRecentDocCard(context, _documents[index])
-                                  .animate()
-                                  .fade(delay: (600 + (100 * index)).ms)
-                                  .slideY(begin: 0.2, end: 0);
+                              return GestureDetector(
+                                onTap: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => DocumentDetailScreen(
+                                        document: _documents[index],
+                                      ),
+                                    ),
+                                  );
+                                  _loadDocuments();
+                                },
+                                child: _buildRecentDocCard(context, _documents[index])
+                                    .animate()
+                                    .fade(delay: (600 + (100 * index)).ms)
+                                    .slideY(begin: 0.2, end: 0),
+                              );
                             },
                           ),
               ),
